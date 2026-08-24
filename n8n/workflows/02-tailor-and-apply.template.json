@@ -1,0 +1,820 @@
+{
+  "name": "Job Agent 02 — Tailor & Apply",
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "nodes": [
+    {
+      "id": "sticky-overview",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        -220
+      ],
+      "parameters": {
+        "width": 440,
+        "height": 380,
+        "content": "## 02 — Tailor & Apply\n\nPicks up everything left at `status = queued` and works one job at a time.\n\n**The status column is the resume mechanism.** If this workflow dies halfway, tomorrow's run picks up the remaining `queued` rows with no recovery logic.\n\n**Nothing is submitted while `DRY_RUN=true` in .env** (the default). Forms get filled and screenshotted, then abandoned. Jobs stay `queued`, so nothing is lost while you look at the screenshots in `apply-svc/artifacts/`.\n\nCaps come from .env: `MAX_APPLICATIONS_PER_RUN`, `MIN_DELAY_MS`, `MAX_DELAY_MS`.\n\nYou need **Google Sheets** and **Google Drive** under Credentials."
+      }
+    },
+    {
+      "id": "trigger-apply",
+      "name": "Apply Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * *"
+            }
+          ]
+        }
+      },
+      "notes": "An hour after workflow 01 so scoring has finished."
+    },
+    {
+      "id": "load-profile",
+      "name": "Load Profile",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "@@include:00-load-profile.js"
+      }
+    },
+    {
+      "id": "sheet-read",
+      "name": "Read Jobs Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        440,
+        0
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Load Profile').first().json.config.sheet_id }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jobs"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "select-queued",
+      "name": "Select Queued Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "@@include:08-select-queued.js"
+      }
+    },
+    {
+      "id": "loop",
+      "name": "Loop Over Jobs",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {
+          "reset": false
+        }
+      },
+      "notes": "Concurrency 1. Bursts get throttled far harder than steady traffic."
+    },
+    {
+      "id": "route-ats",
+      "name": "Route ATS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        120
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "@@include:09-route-ats.js"
+      }
+    },
+    {
+      "id": "req-tailor",
+      "name": "Build Tailor Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        120
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "@@include:req-tailor.js"
+      }
+    },
+    {
+      "id": "claude-tailor",
+      "name": "AI: Tailor Resume",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        120
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json._llm.url }}",
+        "sendHeaders": true,
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json._llm.body) }}",
+        "options": {
+          "timeout": 300000
+        },
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ JSON.stringify($json._llm.headers) }}"
+      },
+      "notes": "Endpoint, auth header and body all come from $json._llm, which lib.js builds for whichever LLM_PROVIDER is set in .env. Nothing here is provider-specific, so switching AI never touches this node."
+    },
+    {
+      "id": "render-html",
+      "name": "Render Resume HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1780,
+        120
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "@@include:10-render-resume-html.js"
+      },
+      "notes": "Single column, real headings, no tables or icons. Two-column templates are the most common reason a good resume scores badly in ATS parsers."
+    },
+    {
+      "id": "req-cover",
+      "name": "Build Cover Letter Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        120
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "@@include:req-cover.js"
+      }
+    },
+    {
+      "id": "claude-cover",
+      "name": "AI: Cover Letter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2220,
+        120
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json._llm.url }}",
+        "sendHeaders": true,
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json._llm.body) }}",
+        "options": {
+          "timeout": 120000
+        },
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ JSON.stringify($json._llm.headers) }}"
+      },
+      "notes": "Endpoint, auth header and body all come from $json._llm, which lib.js builds for whichever LLM_PROVIDER is set in .env. Nothing here is provider-specific, so switching AI never touches this node."
+    },
+    {
+      "id": "merge-cover",
+      "name": "Merge Cover Letter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2440,
+        120
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "@@include:13-merge-cover.js"
+      }
+    },
+    {
+      "id": "render-pdf",
+      "name": "Render PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2660,
+        120
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Load Profile').first().json.config.apply_svc_url }}/render-pdf",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-apply-token",
+              "value": "={{ $('Load Profile').first().json.config.apply_token }}"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ html: $json.resume_html, filename: $json.resume_filename }) }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "notes": "apply-svc already runs Playwright, so page.pdf() replaces an entire external PDF service."
+    },
+    {
+      "id": "drive-resume",
+      "name": "Upload Resume to Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2880,
+        120
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "operation": "upload",
+        "inputDataFieldName": "data",
+        "name": "={{ $('Merge Cover Letter').item.json.resume_filename }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root"
+        },
+        "options": {}
+      },
+      "notes": "Keeps the exact PDF that was submitted. When a recruiter replies in three weeks you will want to know which version they read."
+    },
+    {
+      "id": "req-apply",
+      "name": "Build Apply Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3100,
+        120
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "@@include:11-build-apply-request.js"
+      }
+    },
+    {
+      "id": "submit",
+      "name": "Submit Application",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3320,
+        120
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json._apply_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-apply-token",
+              "value": "={{ $('Load Profile').first().json.config.apply_token }}"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json._body) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "notes": "Long timeout: a paced submission includes a 45-120s human-like delay."
+    },
+    {
+      "id": "record",
+      "name": "Record Outcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3540,
+        120
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "@@include:12-record-outcome.js"
+      }
+    },
+    {
+      "id": "sheet-applications",
+      "name": "Append Applications",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        3760,
+        120
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Load Profile').first().json.config.sheet_id }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "applications"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": "={{ $json.application }}",
+          "matchingColumns": []
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "sheet-update-job",
+      "name": "Update Job Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        3980,
+        120
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Load Profile').first().json.config.sheet_id }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jobs"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": "={{ $('Record Outcome').item.json.job_update }}",
+          "matchingColumns": [
+            "job_id"
+          ]
+        },
+        "options": {}
+      },
+      "notes": "Matches on job_id. This is the state transition that makes the whole pipeline resumable."
+    },
+    {
+      "id": "if-notify",
+      "name": "IF Notify Enabled",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4200,
+        120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "notifyon",
+              "leftValue": "={{ $('Load Profile').first().json.config.notify }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "notes": "TELEGRAM_ENABLED in .env. Off by default — everything still works, you just read the spreadsheet instead of getting messages."
+    },
+    {
+      "id": "if-notify-summary",
+      "name": "IF Notify Summary",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        -160
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "notifyon2",
+              "leftValue": "={{ $('Load Profile').first().json.config.notify }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "telegram-each",
+      "name": "Telegram Notify",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4420,
+        120
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "chatId": "={{ $('Load Profile').first().json.config.telegram_chat_id }}",
+        "text": "={{ ({success:'✅',submitted_unconfirmed:'⚠️',dry_run:'🧪',manual:'✋',failed:'❌'})[$('Record Outcome').item.json.result] || '❔' }} *{{ $('Record Outcome').item.json.title }}*\n{{ $('Record Outcome').item.json.company }} · {{ $('Record Outcome').item.json.ats }} · score {{ $('Record Outcome').item.json.score }}\n\nResult: `{{ $('Record Outcome').item.json.result }}` → status `{{ $('Record Outcome').item.json.status }}`\n{{ $('Record Outcome').item.json.error ? 'Error: ' + $('Record Outcome').item.json.error : '' }}\n\n{{ $('Record Outcome').item.json.url }}",
+        "additionalFields": {
+          "parse_mode": "Markdown",
+          "disable_web_page_preview": true
+        }
+      }
+    },
+    {
+      "id": "telegram-summary",
+      "name": "Telegram Daily Summary",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1340,
+        -160
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "chatId": "={{ $('Load Profile').first().json.config.telegram_chat_id }}",
+        "text": "=*Apply run finished*\n{{ $('Select Queued Jobs').all().length }} job(s) processed.\n\nCheck the `applications` tab for screenshots.",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      }
+    },
+    {
+      "id": "sticky-dryrun",
+      "name": "Dry run note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3300,
+        320
+      ],
+      "parameters": {
+        "width": 440,
+        "height": 220,
+        "content": "### Before you turn off DRY_RUN\n\napply-svc returns `dry_run` and leaves the job `queued`, so nothing is lost while you evaluate.\n\nPhase 5 of the build order: Greenhouse only, cap 3/day, read every screenshot. Widen only after ~20 clean runs on one ATS.\n\nLinkedIn stays on `manual` unless you set LINKEDIN_AUTOSUBMIT=true. Read the header comment in `ats/linkedin.js` first — account restrictions are real and the account is where recruiters reach you."
+      }
+    }
+  ],
+  "connections": {
+    "Apply Trigger": {
+      "main": [
+        [
+          {
+            "node": "Load Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Profile": {
+      "main": [
+        [
+          {
+            "node": "Read Jobs Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Jobs Sheet": {
+      "main": [
+        [
+          {
+            "node": "Select Queued Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Queued Jobs": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Jobs": {
+      "main": [
+        [
+          {
+            "node": "IF Notify Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Route ATS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route ATS": {
+      "main": [
+        [
+          {
+            "node": "Build Tailor Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Tailor Request": {
+      "main": [
+        [
+          {
+            "node": "AI: Tailor Resume",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Tailor Resume": {
+      "main": [
+        [
+          {
+            "node": "Render Resume HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render Resume HTML": {
+      "main": [
+        [
+          {
+            "node": "Build Cover Letter Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Cover Letter Request": {
+      "main": [
+        [
+          {
+            "node": "AI: Cover Letter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Cover Letter": {
+      "main": [
+        [
+          {
+            "node": "Merge Cover Letter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Cover Letter": {
+      "main": [
+        [
+          {
+            "node": "Render PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render PDF": {
+      "main": [
+        [
+          {
+            "node": "Upload Resume to Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Resume to Drive": {
+      "main": [
+        [
+          {
+            "node": "Build Apply Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Apply Request": {
+      "main": [
+        [
+          {
+            "node": "Submit Application",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit Application": {
+      "main": [
+        [
+          {
+            "node": "Record Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Outcome": {
+      "main": [
+        [
+          {
+            "node": "Append Applications",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Applications": {
+      "main": [
+        [
+          {
+            "node": "Update Job Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Job Status": {
+      "main": [
+        [
+          {
+            "node": "IF Notify Enabled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Notify": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Notify Enabled": {
+      "main": [
+        [
+          {
+            "node": "Telegram Notify",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Notify Summary": {
+      "main": [
+        [
+          {
+            "node": "Telegram Daily Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "pinData": {}
+}

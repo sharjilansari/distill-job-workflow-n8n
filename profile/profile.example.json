@@ -1,0 +1,46 @@
+{
+  "_readme": "Copy this file to profile.json and edit it. Everything here is plain text - no code. After editing, run: npm run setup",
+
+  "name": "Your Name",
+  "email": "you@example.com",
+  "phone": "+91 90000 00000",
+  "location": "Bengaluru, India",
+  "links": {
+    "github": "https://github.com/yourhandle",
+    "linkedin": "https://linkedin.com/in/yourhandle",
+    "portfolio": "https://yourdomain.dev"
+  },
+
+  "years_experience": 2,
+  "current_title": "Frontend Developer",
+  "current_company": "Acme Corp",
+  "open_to": ["Frontend Developer", "React Developer", "Software Engineer", "UI Engineer"],
+  "core_stack": ["React", "Next.js", "TypeScript", "JavaScript", "Redux", "Tailwind CSS"],
+  "secondary_stack": ["Node.js", "Express", "MongoDB", "REST", "Jest", "Playwright"],
+  "never_worked_with": [".NET", "Java", "PHP", "Salesforce"],
+  "notice_period_days": 30,
+
+  "_filters_readme": "These run before any AI call, so they cost nothing and usually remove half the jobs. Plain words, not code - they are matched as whole words, case-insensitive.",
+  "filters": {
+    "years_experience": 2,
+    "years_tolerance": 1,
+    "allowed_locations": ["bengaluru", "bangalore", "pune", "hyderabad", "remote", "india"],
+    "title_allowlist": ["frontend", "front-end", "react", "next.js", "nextjs", "javascript", "typescript", "ui", "web", "full stack", "fullstack", "software", "mern"],
+    "title_blocklist": [".net", "c++", "php", "drupal", "wordpress", "salesforce", "sap", "qa", "manual test", "sdet", "sales", "bdm", "intern", "unpaid"],
+    "company_blocklist": ["staffing", "consultancy", "manpower"]
+  },
+
+  "_answers_readme": "Used to fill application forms. Anything left blank is skipped rather than guessed - a required field then shows up as a failed application you can look at, instead of a wrong answer submitted in your name.",
+  "standard_answers": {
+    "willing_to_relocate": "Yes",
+    "requires_sponsorship": "No",
+    "authorized_to_work": "Yes",
+    "years_react": "2",
+    "years_javascript": "3",
+    "notice_period": "30 days",
+    "gender": "Prefer not to say",
+    "veteran_status": "I don't wish to answer",
+    "disability_status": "I don't wish to answer",
+    "race_ethnicity": "I don't wish to answer"
+  }
+}

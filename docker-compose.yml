@@ -1,0 +1,66 @@
+# Everything the job agent needs, in one file.
+#
+#   docker compose up -d      start
+#   docker compose logs -f    watch
+#   docker compose down       stop
+#   docker compose restart    pick up .env changes
+#
+# Both services read the same .env at the project root, which is why filling
+# that one file is the whole configuration story.
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: job-agent-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    env_file:
+      - .env
+    environment:
+      # Lets Code nodes read your .env, so no API key is ever written into a
+      # workflow file. This is why setup bakes only your profile, not secrets.
+      NODE_FUNCTION_ALLOW_ENV: "*"
+      N8N_PORT: 5678
+      N8N_HOST: localhost
+      GENERIC_TIMEZONE: ${TIMEZONE:-Asia/Kolkata}
+      TZ: ${TIMEZONE:-Asia/Kolkata}
+      # Keeps executions readable without filling the disk forever.
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: 336
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_RUNNERS_ENABLED: "true"
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+    volumes:
+      - n8n-data:/home/node/.n8n
+      # So you can import from n8n/dist/ without hunting for the path.
+      - ./n8n/dist:/import:ro
+    depends_on:
+      - apply-svc
+
+  apply-svc:
+    build: ./apply-svc
+    container_name: job-agent-apply
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      PORT: 3000
+      HEADLESS: "true"
+      TZ: ${TIMEZONE:-Asia/Kolkata}
+    volumes:
+      - ./apply-svc/sessions:/app/sessions
+      - ./apply-svc/artifacts:/app/artifacts
+    # Playwright needs far more than Docker's default 64MB of shared memory.
+    shm_size: "1gb"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  n8n-data:

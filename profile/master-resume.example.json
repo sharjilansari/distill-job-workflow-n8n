@@ -1,0 +1,56 @@
+{
+  "name": "Your Name",
+  "headline": "Frontend Developer",
+  "contact": {
+    "email": "you@example.com",
+    "phone": "+91 90000 00000",
+    "location": "Bengaluru, India",
+    "github": "github.com/yourhandle",
+    "linkedin": "linkedin.com/in/yourhandle"
+  },
+  "summary": "Frontend developer with 2 years building production React applications. Comfortable owning a feature from design handoff through release.",
+  "skills": {
+    "languages": ["TypeScript", "JavaScript", "HTML", "CSS", "SQL"],
+    "frameworks": ["React", "Next.js", "Redux Toolkit", "React Query", "Tailwind CSS"],
+    "backend": ["Node.js", "Express", "MongoDB", "REST"],
+    "tooling": ["Vite", "Webpack", "Jest", "React Testing Library", "Playwright", "Git", "Docker"]
+  },
+  "experience": [
+    {
+      "company": "Acme Corp",
+      "title": "Frontend Developer",
+      "period": "Jun 2023 - Present",
+      "location": "Bengaluru",
+      "bullets": [
+        "Rebuilt the customer dashboard in Next.js, cutting first contentful paint from 3.1s to 1.2s",
+        "Migrated 40+ class components to hooks and TypeScript, removing 6k lines of legacy code",
+        "Built a shared component library used by three product teams, documented in Storybook",
+        "Added Playwright coverage for the checkout flow, catching 11 regressions before release",
+        "Owned the design-system token pipeline shared between Figma and Tailwind config"
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "Example Project",
+      "stack": ["React", "Node.js", "MongoDB"],
+      "url": "https://github.com/yourhandle/example",
+      "bullets": [
+        "Full-stack application handling 1,200 monthly active users",
+        "Implemented optimistic UI updates and offline-first sync"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "degree": "B.Tech, Computer Science",
+      "institution": "Your University",
+      "period": "2019 - 2023"
+    }
+  ],
+  "variants": {
+    "frontend": "Emphasise UI craft, performance, accessibility, design-system work. Lead with the component library and FCP improvement.",
+    "react": "Emphasise React internals, hooks, state management, rendering performance. Lead with the hooks/TypeScript migration.",
+    "fullstack": "Emphasise Node, MongoDB, API design and end-to-end feature ownership. Lead with the full-stack project."
+  }
+}

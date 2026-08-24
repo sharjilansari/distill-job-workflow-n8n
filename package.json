@@ -1,0 +1,17 @@
+{
+  "name": "job-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Distill monitors job boards, n8n scores and tailors, Playwright applies. Configured entirely from .env.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "start": "docker compose up -d && node scripts/doctor.mjs",
+    "stop": "docker compose down",
+    "restart": "docker compose restart",
+    "logs": "docker compose logs -f",
+    "login": "npm --prefix apply-svc run login --"
+  }
+}

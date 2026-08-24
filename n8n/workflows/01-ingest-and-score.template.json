@@ -1,0 +1,752 @@
+{
+  "name": "Job Agent 01 — Ingest & Score",
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "nodes": [
+    {
+      "id": "sticky-overview",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        -200
+      ],
+      "parameters": {
+        "width": 420,
+        "height": 340,
+        "content": "## 01 — Ingest & Score\n\nRuns daily at 09:00. The webhook is a bonus early trigger; Distill only allows 30 calls a month, so the schedule is the real clock.\n\n**Write-first rule:** the raw payload hits `raw_inbox` before anything parses it. A webhook fire is not replayable and you only get 30.\n\n**Everything is configured from `.env`** — settings and keys are read at runtime, your profile is baked in by `npm run setup`. There is nothing to fill in inside this workflow.\n\nYou still need to connect **Google Sheets** and **Gmail** under Credentials.\n\n⚠️ Don't edit code in this editor — it is generated. Edit `n8n/code/*.js`, run `npm run setup`, re-import."
+      }
+    },
+    {
+      "id": "trigger-schedule",
+      "name": "Daily Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -60
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "trigger-webhook",
+      "name": "Distill Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        140
+      ],
+      "webhookId": "distill-jobs",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "distill-jobs",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "load-profile",
+      "name": "Load Profile",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        40
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "@@include:00-load-profile.js"
+      }
+    },
+    {
+      "id": "gmail-fetch",
+      "name": "Fetch Distill Emails",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        480,
+        -60
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "resource": "message",
+        "operation": "getAll",
+        "returnAll": true,
+        "simple": false,
+        "filters": {
+          "q": "label:distill/jobs is:unread newer_than:2d"
+        },
+        "options": {}
+      },
+      "notes": "Distill's email action is the unmetered data pipe. Gmail filter: subject contains [DISTILL] -> label distill/jobs, skip inbox."
+    },
+    {
+      "id": "norm-email",
+      "name": "Normalize Email Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        -60
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "@@include:02-normalize-email.js"
+      }
+    },
+    {
+      "id": "norm-webhook",
+      "name": "Normalize Webhook Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        160
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "@@include:01-normalize-webhook.js"
+      }
+    },
+    {
+      "id": "sheet-raw",
+      "name": "Append Raw Inbox",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        980,
+        40
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Load Profile').first().json.config.sheet_id }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "raw_inbox"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": []
+        },
+        "options": {}
+      },
+      "notes": "Write-first. Nothing downstream can lose the day's payload."
+    },
+    {
+      "id": "parse-diff",
+      "name": "Parse Distill Diff",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1220,
+        40
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "@@include:03-parse-diff.js"
+      },
+      "notes": "Tune NOISE here first. Applicant counts and '2 hours ago' will otherwise regenerate the same jobs every day."
+    },
+    {
+      "id": "req-extract",
+      "name": "Build Extract Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1460,
+        40
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "@@include:req-extract.js"
+      }
+    },
+    {
+      "id": "claude-extract",
+      "name": "AI: Extract Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1700,
+        40
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json._llm.url }}",
+        "sendHeaders": true,
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json._llm.body) }}",
+        "options": {
+          "timeout": 180000
+        },
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ JSON.stringify($json._llm.headers) }}"
+      },
+      "notes": "Endpoint, auth header and body all come from $json._llm, which lib.js builds for whichever LLM_PROVIDER is set in .env. Nothing here is provider-specific, so switching AI never touches this node."
+    },
+    {
+      "id": "norm-extracted",
+      "name": "Normalize Extracted",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1940,
+        40
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "@@include:04-normalize-extracted.js"
+      }
+    },
+    {
+      "id": "sheet-read-jobs",
+      "name": "Read Existing Jobs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2180,
+        40
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Load Profile').first().json.config.sheet_id }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jobs"
+        },
+        "options": {}
+      },
+      "notes": "One read for the whole run. A per-item lookup would blow the Sheets quota on a busy day."
+    },
+    {
+      "id": "dedupe",
+      "name": "Dedupe",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        40
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "@@include:05-dedupe.js"
+      }
+    },
+    {
+      "id": "hard-filters",
+      "name": "Hard Filters",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2660,
+        40
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "@@include:06-hard-filters.js"
+      },
+      "notes": "Free and instant. Typically removes 50-60% before a single token is spent."
+    },
+    {
+      "id": "if-passed",
+      "name": "IF Passed Hard Filters",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2900,
+        40
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "passed",
+              "leftValue": "={{ $json.filtered_out }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "req-score",
+      "name": "Build Score Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3140,
+        -80
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "@@include:req-score.js"
+      }
+    },
+    {
+      "id": "claude-score",
+      "name": "AI: Score Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3380,
+        -80
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json._llm.url }}",
+        "sendHeaders": true,
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json._llm.body) }}",
+        "options": {
+          "timeout": 180000,
+          "batching": {
+            "batch": {
+              "batchSize": 4,
+              "batchInterval": 1500
+            }
+          }
+        },
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ JSON.stringify($json._llm.headers) }}"
+      },
+      "notes": "Endpoint, auth header and body all come from $json._llm, which lib.js builds for whichever LLM_PROVIDER is set in .env. Nothing here is provider-specific, so switching AI never touches this node."
+    },
+    {
+      "id": "merge-score",
+      "name": "Merge Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3620,
+        -80
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "@@include:07-merge-score.js"
+      },
+      "notes": "Applies the thresholds from Load Profile and sets the final status: queued / review / skipped."
+    },
+    {
+      "id": "strip-internal",
+      "name": "Strip Internal Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3860,
+        40
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Drop the working fields so the sheet only gets real columns.\nreturn $input.all().map((item) => {\n  const { _body, filtered_out, filter_reason, ...rest } = item.json;\n  return { json: rest };\n});"
+      }
+    },
+    {
+      "id": "sheet-write-jobs",
+      "name": "Write Jobs Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        4100,
+        40
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Load Profile').first().json.config.sheet_id }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "jobs"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": []
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "if-review",
+      "name": "IF Needs Review",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4340,
+        40
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "isreview",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "review",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "notifyon",
+              "leftValue": "={{ $('Load Profile').first().json.config.notify }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "telegram-review",
+      "name": "Telegram Review Card",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4580,
+        -60
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "chatId": "={{ $('Load Profile').first().json.config.telegram_chat_id }}",
+        "text": "=*{{ $json.score }}/100 — {{ $json.title }}*\n{{ $json.company }} · {{ $json.location }} ({{ $json.remote_type }})\n\n{{ $json.score_reason }}\n\nGaps: {{ $json.missing_skills || 'none noted' }}\n\n{{ $json.canonical_url }}\n\nSet status to `queued` in the sheet to apply.",
+        "additionalFields": {
+          "parse_mode": "Markdown",
+          "disable_web_page_preview": true
+        }
+      },
+      "notes": "Borderline jobs come to you instead of being auto-applied or silently dropped."
+    },
+    {
+      "id": "sticky-quota",
+      "name": "Quota note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        180
+      ],
+      "parameters": {
+        "width": 420,
+        "height": 200,
+        "content": "### Distill quota\n\n30 webhook calls / month ÷ 1 per day = exactly 30 days. A 31-day month runs out on the last day.\n\nThat is why the Schedule Trigger is the clock and the email action is the pipe. The webhook here is a bonus early trigger, not the data path.\n\nIf `raw_inbox` gets no rows two runs running, a monitor selector broke or a login expired. Check before assuming nobody is hiring."
+      }
+    }
+  ],
+  "connections": {
+    "Daily Trigger": {
+      "main": [
+        [
+          {
+            "node": "Load Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Distill Webhook": {
+      "main": [
+        [
+          {
+            "node": "Load Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Profile": {
+      "main": [
+        [
+          {
+            "node": "Fetch Distill Emails",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Normalize Webhook Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Distill Emails": {
+      "main": [
+        [
+          {
+            "node": "Normalize Email Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Email Payload": {
+      "main": [
+        [
+          {
+            "node": "Append Raw Inbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Webhook Payload": {
+      "main": [
+        [
+          {
+            "node": "Append Raw Inbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Raw Inbox": {
+      "main": [
+        [
+          {
+            "node": "Parse Distill Diff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Distill Diff": {
+      "main": [
+        [
+          {
+            "node": "Build Extract Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Extract Request": {
+      "main": [
+        [
+          {
+            "node": "AI: Extract Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Extract Jobs": {
+      "main": [
+        [
+          {
+            "node": "Normalize Extracted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Extracted": {
+      "main": [
+        [
+          {
+            "node": "Read Existing Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Existing Jobs": {
+      "main": [
+        [
+          {
+            "node": "Dedupe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedupe": {
+      "main": [
+        [
+          {
+            "node": "Hard Filters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hard Filters": {
+      "main": [
+        [
+          {
+            "node": "IF Passed Hard Filters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Passed Hard Filters": {
+      "main": [
+        [
+          {
+            "node": "Build Score Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Strip Internal Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Score Request": {
+      "main": [
+        [
+          {
+            "node": "AI: Score Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Score Job": {
+      "main": [
+        [
+          {
+            "node": "Merge Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Score": {
+      "main": [
+        [
+          {
+            "node": "Strip Internal Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Strip Internal Fields": {
+      "main": [
+        [
+          {
+            "node": "Write Jobs Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Jobs Sheet": {
+      "main": [
+        [
+          {
+            "node": "IF Needs Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Needs Review": {
+      "main": [
+        [
+          {
+            "node": "Telegram Review Card",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "pinData": {}
+}
