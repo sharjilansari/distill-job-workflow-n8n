@@ -187,9 +187,11 @@ console.log(`
          (Credentials → New → search for each → Sign in with Google)
        · Turn both workflows on
 
-  ${c.bold}4.${c.reset} Set up your job monitors
-     Follow ${c.bold}docs/distill-setup.md${c.reset} — that part cannot be automated,
-     but it is copy-and-paste and takes about ten minutes.
+  ${c.bold}4.${c.reset} Check what your job sources return
+     ${c.blue}npm run sources${c.reset}
+     Fetches every source in profile.json and prints the jobs it would
+     write — no AI call, nothing saved. Tune the "sources" block until
+     the list looks right. See ${c.bold}docs/sources.md${c.reset}.
 
   ${c.grey}Applications are OFF by default (DRY_RUN=true). The system will fill
   forms and screenshot them without submitting until you change that.${c.reset}

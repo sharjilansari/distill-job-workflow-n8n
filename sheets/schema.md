@@ -47,8 +47,8 @@ Rules that keep it honest:
 |---|---|
 | `job_id` | Generated, `job_<base36>`. Match key for updates. |
 | `fingerprint` | `hash(company \| title \| city)`. Catches reposts under a new URL. |
-| `source` | linkedin / naukri / wellfound / greenhouse / … |
-| `company`, `title`, `location` | Extracted |
+| `source` | Which source found it: `instahyre`, `foundit`, `greenhouse`, `lever`, `ashby`, `remoteok`, `arbeitnow`, `adzuna`, `jooble` for Tier 1; `linkedin`, `naukri`, … for page-diff ingestion |
+| `company`, `title`, `location` | From the source's own JSON (Tier 1) or extracted by the LLM (Tier 2) |
 | `remote_type` | onsite / hybrid / remote / unknown |
 | `experience_min`, `experience_max` | Integer years, null if unstated |
 | `salary` | Free text, usually empty |
@@ -64,9 +64,15 @@ Rules that keep it honest:
 
 ## `raw_inbox`
 
-Untouched payloads, written *before* anything parses them. A webhook fire is
-not replayable and you only get 30 a month, so this is the safety net: if the
-LLM node 429s at step four, the day's data is already on disk.
+Untouched payloads from the page-diff lane, written *before* anything parses
+them. A change alert is not replayable and the free plan sends 30 a month
+across every channel, so this is the safety net: if the LLM node 429s at step
+four, the day's data is already on disk.
+
+Tier 1 API sources do not write here. An API response *is* replayable — the
+same call tomorrow returns the same postings — so the row would cost quota to
+buy nothing. `Normalize API Jobs` logs a per-source health line instead, and
+`npm run sources` reproduces any run on demand.
 
 `run_id`, `received_at`, `source_channel` (email/webhook), `monitor_name`,
 `monitor_uri`, `raw_text`, `processed`

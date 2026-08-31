@@ -1,8 +1,15 @@
 # Distill setup
 
-Roughly 70% of this system's reliability is decided here, before n8n ever sees
-a byte. A badly configured monitor produces a diff every check, and every one
-of those costs tokens, fills `raw_inbox`, and regenerates jobs you already saw.
+> **Read [sources.md](sources.md) first.** Distill is Tier 2 — it covers sites
+> with no API. The free plan gives you **30 alerts a month across email and
+> webhook together**, not thirty webhooks plus unlimited email, so it cannot be
+> the data path for a daily pipeline. Tier 1 (job APIs) carries the volume;
+> what follows is for the sites Tier 1 cannot reach, and for spending those
+> thirty alerts well.
+
+A badly configured monitor produces a diff every check, and every one of those
+costs tokens, fills `raw_inbox`, and regenerates jobs you already saw. On a
+30-alert budget it also burns the month in a week.
 
 ---
 
@@ -30,8 +37,9 @@ so the daily diff is naturally the day's new listings.
 **Naukri** — build the search in the UI, then copy the resulting URL. It
 encodes experience and location into the path.
 
-**Wellfound / Cutshort / Instahyre** — same approach: filter in the UI, copy
-the URL that results.
+**Wellfound / Cutshort** — same approach: filter in the UI, copy the URL that
+results. (Instahyre and foundit.in do not belong here — they have APIs, and
+Tier 1 pulls them for free. See [sources.md](sources.md).)
 
 ---
 
@@ -87,7 +95,7 @@ containing *everything* posted that day. A 15-minute interval would produce
 
 ## 6. Actions
 
-### Email — the data pipe (all monitors)
+### Email — one alert of your thirty
 
 Set the action to Email, with the subject templated as:
 
@@ -105,15 +113,17 @@ Workflow 01 queries `label:distill/jobs is:unread newer_than:2d`. The
 `newer_than` guard means a Gmail credential hiccup does not replay a month of
 history on the next successful run.
 
-Confirm the email-action limit on your own Distill plan. On every tier I have
-seen it is not metered the way webhook credits are, but check before you build
-ten monitors on the assumption.
+Email alerts are metered exactly like webhooks — one shared allowance of 30 a
+month on the free plan. Ten monitors alerting daily is not thirty alerts, it is
+three hundred, and the ones after the thirtieth are simply never sent. Pick one
+or two searches worth an alert; put everything else on Tier 1.
 
-### Webhook — the clock (one monitor only)
+### Webhook — paid plans only
 
-30 calls a month is exactly one a day with nothing spare, so spend it on your
-single highest-priority search — the saved query for the role you would drop
-everything for — and let the schedule handle the rest.
+The webhook action is not available on the free plan at all; it starts at
+Starter. If you are on a paid plan, point one monitor at the `Distill Webhook`
+node as an early-trigger lane for your single highest-priority search, and let
+the schedule handle the rest.
 
 Point it at the production URL of the `Distill Webhook` node in workflow 01,
 and template the body:

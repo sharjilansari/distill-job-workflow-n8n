@@ -18,7 +18,7 @@
       "parameters": {
         "width": 420,
         "height": 340,
-        "content": "## 01 — Ingest & Score\n\nRuns daily at 09:00. The webhook is a bonus early trigger; Distill only allows 30 calls a month, so the schedule is the real clock.\n\n**Write-first rule:** the raw payload hits `raw_inbox` before anything parses it. A webhook fire is not replayable and you only get 30.\n\n**Everything is configured from `.env`** — settings and keys are read at runtime, your profile is baked in by `npm run setup`. There is nothing to fill in inside this workflow.\n\nYou still need to connect **Google Sheets** and **Gmail** under Credentials.\n\n⚠️ Don't edit code in this editor — it is generated. Edit `n8n/code/*.js`, run `npm run setup`, re-import."
+        "content": "## 01 - Ingest & Score\n\nRuns daily at 09:00.\n\n**Tier 1 (bottom lane)** pulls structured JSON from job APIs. This is the data path - free, unmetered, and it needs no extraction call.\n\n**Tier 2 (top lane)** is page-diff ingestion for sites with no API. It still costs an extraction call per batch.\n\n**Write-first rule** applies to Tier 2 only: a change alert is not replayable, so `raw_inbox` gets it before anything parses it. An API response is replayable by definition, so Tier 1 skips that write.\n\n**Everything is configured from `.env` and `profile/profile.json`** - keys are read at runtime, your profile is baked in by `npm run setup`. There is nothing to fill in inside this workflow.\n\nWARNING: don't edit code in this editor - it is generated. Edit `n8n/code/*.js`, run `npm run setup`, re-import."
       }
     },
     {
@@ -93,7 +93,7 @@
         },
         "options": {}
       },
-      "notes": "Distill's email action is the unmetered data pipe. Gmail filter: subject contains [DISTILL] -> label distill/jobs, skip inbox."
+      "notes": "Tier 2 lane. Distill free allows 30 alerts a MONTH across email and webhook together, so this is a canary, not the data pipe. Gmail filter: subject contains [DISTILL] -> label distill/jobs, skip inbox."
     },
     {
       "id": "norm-email",
@@ -233,7 +233,7 @@
       "typeVersion": 4.5,
       "position": [
         2180,
-        40
+        420
       ],
       "alwaysOutputData": true,
       "parameters": {
@@ -259,7 +259,7 @@
       "typeVersion": 2,
       "position": [
         2420,
-        40
+        420
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
@@ -498,7 +498,93 @@
       "parameters": {
         "width": 420,
         "height": 200,
-        "content": "### Distill quota\n\n30 webhook calls / month ÷ 1 per day = exactly 30 days. A 31-day month runs out on the last day.\n\nThat is why the Schedule Trigger is the clock and the email action is the pipe. The webhook here is a bonus early trigger, not the data path.\n\nIf `raw_inbox` gets no rows two runs running, a monitor selector broke or a login expired. Check before assuming nobody is hiring."
+        "content": "### Why Tier 1 exists\n\nDistill's free plan is **30 alerts a month, email and webhook sharing one bucket** - about one a day across every monitor you own, not one a day each.\n\nSo Distill is not a data pipe. Tier 1 (job APIs) carries the volume; the Distill lane is a canary for one high-priority search, and self-hosted change detection covers the rest.\n\nIf `Normalize API Jobs` logs `0 job(s)` two runs running, a source changed shape. The node names which one."
+      }
+    },
+    {
+      "id": "sources-build",
+      "name": "Build Source Requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        420
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "@@include:20-build-source-requests.js"
+      },
+      "notes": "One item per HTTP call, built from profile.json -> \"sources\". Keys for Adzuna/Jooble are read from the environment, never baked in."
+    },
+    {
+      "id": "sources-fetch",
+      "name": "Fetch Job Sources",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        420
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "={{ $json._req.method }}",
+        "url": "={{ $json._req.url }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={{ JSON.stringify($json._req.headers) }}",
+        "sendBody": "={{ $json._req.method === 'POST' }}",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json._req.body) }}",
+        "options": {
+          "timeout": 30000,
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 1200
+            }
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "notes": "Runs once per item from Build Source Requests. neverError keeps a 404 body flowing so the schema guard downstream can report it, instead of the branch dying."
+    },
+    {
+      "id": "sources-normalize",
+      "name": "Normalize API Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        980,
+        420
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "@@include:21-normalize-api-jobs.js"
+      },
+      "notes": "Emits ONE item holding every job in an array. That keeps Read Existing Jobs to a single Sheets read, and guarantees the tail of the workflow runs even on an empty day."
+    },
+    {
+      "id": "sticky-tier1",
+      "name": "Tier 1 note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        400
+      ],
+      "parameters": {
+        "width": 420,
+        "height": 300,
+        "content": "### Tier 1 - structured sources\n\nInstahyre, foundit.in, Greenhouse/Lever/Ashby boards and friends answer with JSON that is already structured, so this lane **skips the extraction call entirely**. No tokens, no diff parsing, no 30-a-month ceiling.\n\nConfigure the searches in `profile/profile.json` under `sources`, then `npm run setup`.\n\nTry it before importing: `npm run sources` fetches every enabled source and prints the rows it would write."
       }
     }
   ],
@@ -535,6 +621,11 @@
           },
           {
             "node": "Normalize Webhook Payload",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Source Requests",
             "type": "main",
             "index": 0
           }
@@ -620,13 +711,7 @@
     },
     "Normalize Extracted": {
       "main": [
-        [
-          {
-            "node": "Read Existing Jobs",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Read Existing Jobs": {
@@ -745,6 +830,39 @@
           }
         ],
         []
+      ]
+    },
+    "Build Source Requests": {
+      "main": [
+        [
+          {
+            "node": "Fetch Job Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Job Sources": {
+      "main": [
+        [
+          {
+            "node": "Normalize API Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize API Jobs": {
+      "main": [
+        [
+          {
+            "node": "Read Existing Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },

@@ -394,6 +394,14 @@
     <p class="eyebrow">Distill → n8n → Playwright → Sheets</p>
     <h1>Distill Job Agent</h1>
     <p class="standfirst">A daily pipeline that watches job boards through Distill, scores what it finds against your profile, tailors a resume per role, and submits the application. Designed around one hard limit: thirty webhook calls a month.</p>
+
+    <div class="constraint" style="margin-top:1.5rem">
+     <div>
+      <p><strong>Superseded in part — read <a href="sources.md">sources.md</a> for how ingestion works now.</strong></p>
+      <p>This document argues from a premise that turned out to be false: that Distill meters webhooks but not email. It does not. The free plan allows <strong>30 alerts a month across email and webhook together</strong> — roughly one a day for an entire watchlist — and the webhook action is not available on the free plan at all. The &ldquo;metered clock, unmetered pipe&rdquo; split below, and the diagram that illustrates it, describe a channel that was never free.</p>
+      <p>Ingestion is now tiered. Tier 1 pulls job APIs that return structured JSON — free, uncapped, and needing no extraction call at all; that is the data path. Tier 2 is page diffing for sites with no API, and it is where Distill&rsquo;s thirty alerts are best spent, as a canary on one high-priority search. Everything downstream of ingestion — the write-first rule for Tier 2, the status state machine, batching, the sheet as control panel — still holds exactly as described.</p>
+     </div>
+    </div>
   </header>
 
   <div class="body-grid">

@@ -194,14 +194,27 @@ Finally, toggle both workflows **Active** (top right).
 
 ---
 
-## Step 7 — Set up the job monitors
+## Step 7 — Choose what to watch
 
 This is the one part nobody can automate for you, because it means choosing
-which searches to watch.
+which searches to watch. There is no setup beyond editing a file.
 
-Follow **[docs/distill-setup.md](docs/distill-setup.md)**. It has the exact
-LinkedIn web address to copy, the settings to tick, and the filter patterns to
-paste in. About ten minutes.
+Open `profile/profile.json`, find the `sources` block, and put your own skills,
+job titles and cities in it. Then:
+
+```
+npm run sources
+```
+
+That fetches every source and prints the jobs it would write — no AI call, no
+spreadsheet write, nothing saved. Adjust and re-run until the list looks like
+jobs you would actually apply to, then `npm run setup` to push it into the
+workflow. **[docs/sources.md](docs/sources.md)** explains every setting.
+
+Optional, and only worth it for sites with no API of their own:
+**[docs/distill-setup.md](docs/distill-setup.md)** sets up page-change
+monitoring. Note that Distill's free plan sends **30 alerts a month in total**,
+so it is a canary for one or two searches, not a way to watch ten boards.
 
 ---
 
@@ -247,14 +260,17 @@ either end.
 Open `.env` and set `OPENAI_MODEL` (or `GEMINI_MODEL` / `ANTHROPIC_MODEL`) to
 one your account lists on the provider's website.
 
-**Nothing appears in the spreadsheet after a day** — usually the Gmail label.
-Check that Distill emails are arriving and that your Gmail filter is putting
-them under the label `distill/jobs`.
+**Nothing appears in the spreadsheet after a day** — run `npm run sources`.
+It shows each source's health and how many jobs survive your filters, which
+separates "the sources broke" from "my filters are too narrow" in one command.
+If you also use Distill, check its emails are arriving under the `distill/jobs`
+label.
 
 **Everything says `manual` in the status column** — expected if you are
 watching mostly LinkedIn and Naukri. Those sites do not have automatable
-application forms. Add some company career pages to your monitors; most of them
-run on Greenhouse, Lever or Ashby underneath, which this system does handle.
+application forms. Add company boards to `sources` in `profile/profile.json` —
+Greenhouse, Lever and Ashby are all free to pull from and all three are ATSes
+this system can submit to end to end.
 
 **I want to change something** — almost everything lives in `.env` or the two
 profile files. Edit, then:

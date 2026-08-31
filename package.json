@@ -3,11 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Distill monitors job boards, n8n scores and tailors, Playwright applies. Configured entirely from .env.",
-  "engines": { "node": ">=20" },
+  "description": "Job APIs and page monitors feed n8n, which scores and tailors; Playwright applies. Configured entirely from .env.",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "doctor": "node scripts/doctor.mjs",
+    "sources": "node scripts/test-sources.mjs",
     "start": "docker compose up -d && node scripts/doctor.mjs",
     "stop": "docker compose down",
     "restart": "docker compose restart",

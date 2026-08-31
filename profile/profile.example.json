@@ -30,6 +30,52 @@
     "company_blocklist": ["staffing", "consultancy", "manpower"]
   },
 
+  "_sources_readme": "Where jobs come from. These APIs answer with structured JSON, so nothing here costs an AI call - the whole list is fetched, filtered and deduped for free. Set enabled to false to turn one off. Run 'npm run sources' to see exactly what each one returns before you commit to it.",
+  "sources": {
+    "max_age_days": 3,
+
+    "_instahyre": "Skills are OR'd together and cost one call for the whole list. experience_level is one of: entry_level, associate, mid_senior, senior, internship. It has no working location filter - allowed_locations above does that job for free.",
+    "instahyre": {
+      "enabled": true,
+      "skills": ["React", "React.js", "JavaScript", "TypeScript", "Next.js", "Frontend"],
+      "experience_level": "associate",
+      "limit": 50
+    },
+
+    "_foundit": "foundit.in, formerly Monster India. One call per query x location, so keep both lists short - four queries and four cities is sixteen calls.",
+    "foundit": {
+      "enabled": true,
+      "queries": ["react developer", "frontend developer"],
+      "locations": ["noida", "gurgaon", "bengaluru"],
+      "experience_min": 1,
+      "experience_max": 4,
+      "limit": 40
+    },
+
+    "_ats": "Company job boards. Put the board name from the careers page URL here - job-boards.greenhouse.io/BOARDNAME, jobs.lever.co/BOARDNAME, jobs.ashbyhq.com/BOARDNAME. These are the ATSes apply-svc can actually submit to, so jobs found here are the ones most likely to go all the way through.",
+    "greenhouse": { "enabled": true, "boards": ["razorpaysoftwareprivatelimited"] },
+    "lever": { "enabled": false, "boards": [] },
+    "ashby": { "enabled": false, "boards": [] },
+
+    "_remote": "Global remote boards. Large and mostly not India-specific, so limit matters and the hard filters will cut most of it.",
+    "remoteok": { "enabled": false, "limit": 200 },
+    "arbeitnow": { "enabled": false, "limit": 200 },
+
+    "_keyed": "These two need a free key in .env before they will do anything.",
+    "adzuna": {
+      "enabled": false,
+      "country": "in",
+      "queries": ["react developer"],
+      "locations": ["noida", "bengaluru"],
+      "limit": 50
+    },
+    "jooble": {
+      "enabled": false,
+      "queries": ["react developer"],
+      "locations": ["Noida"]
+    }
+  },
+
   "_answers_readme": "Used to fill application forms. Anything left blank is skipped rather than guessed - a required field then shows up as a failed application you can look at, instead of a wrong answer submitted in your name.",
   "standard_answers": {
     "willing_to_relocate": "Yes",

@@ -12,7 +12,12 @@ function env(key, fallback = '') {
   return v === undefined || v === '' ? fallback : String(v);
 }
 function envNum(key, fallback) {
-  const n = Number(env(key, ''));
+  // Number('') is 0, not NaN, so an unset variable would otherwise resolve to
+  // zero instead of the fallback — and a zero threshold or a zero request cap
+  // fails in a way that looks like a config error somewhere else entirely.
+  const raw = env(key, '');
+  if (raw === '') return fallback;
+  const n = Number(raw);
   return Number.isFinite(n) ? n : fallback;
 }
 function envBool(key, fallback) {
